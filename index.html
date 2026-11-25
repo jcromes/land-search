@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Alabama Land Search — Hoover 60-Min Radius</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+  </style>
+</head>
+<body class="bg-stone-50 text-stone-900 min-h-screen antialiased">
+  <!-- Header -->
+  <header class="bg-emerald-950 text-white border-b border-emerald-900">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div>
+        <div class="flex items-center gap-2.5">
+          <i data-lucide="trees" class="w-6 h-6 text-emerald-400"></i>
+          <h1 class="text-xl sm:text-2xl font-bold tracking-tight">Alabama Land Search</h1>
+        </div>
+        <p class="text-emerald-200/80 text-sm mt-1">
+          10+ Acres • On-Site Water • No HOA • Within 60 Min of Hoover, AL (35244)
+        </p>
+      </div>
+      <div class="flex flex-wrap items-center gap-2">
+        <span id="dataSourceBadge" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-emerald-900/80 text-emerald-200 border border-emerald-700/60">
+          <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+          Built-in Snapshot (Nov 24, 2026)
+        </span>
+        <button id="refreshBtn" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-800 hover:bg-emerald-700 text-white transition cursor-pointer">
+          <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+          Refresh
+        </button>
+        <button id="openSettingsBtn" type="button" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/10 hover:bg-white/20 text-white transition cursor-pointer">
+          <i data-lucide="settings" class="w-3.5 h-3.5"></i>
+          Connect Sheet CSV
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+    <!-- Alert / Error Banner (hidden by default) -->
+    <div id="statusBanner" class="hidden rounded-xl border px-4 py-3 text-sm flex items-center justify-between gap-3"></div>
+
+    <!-- KPI Strip -->
+    <section class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div class="bg-white rounded-xl border border-stone-200 p-4 shadow-sm">
+        <p class="text-xs font-medium text-stone-500 uppercase tracking-wider">Matching Tracts</p>
+        <p id="kpiCount" class="text-2xl font-bold text-stone-900 mt-1">0</p>
+      </div>
+      <div class="bg-white rounded-xl border border-stone-200 p-4 shadow-sm">
+        <p class="text-xs font-medium text-stone-500 uppercase tracking-wider">Avg Price / Acre</p>
+        <p id="kpiAvgPerAcre" class="text-2xl font-bold text-stone-900 mt-1">$0</p>
+      </div>
+      <div class="bg-white rounded-xl border border-stone-200 p-4 shadow-sm">
+        <p class="text-xs font-medium text-stone-500 uppercase tracking-wider">Closest Drive</p>
+        <p id="kpiClosest" class="text-2xl font-bold text-emerald-700 mt-1">—</p>
+      </div>
+      <div class="bg-white rounded-xl border border-stone-200 p-4 shadow-sm">
+        <p class="text-xs font-medium text-stone-500 uppercase tracking-wider">Electric On-Site</p>
+        <p id="kpiElectric" class="text-2xl font-bold text-stone-900 mt-1">0</p>
+      </div>
+    </section>
+
+    <!-- Filters & Controls -->
+    <section class="bg-white rounded-xl border border-stone-200 p-4 shadow-sm space-y-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div class="lg:col-span-2 relative">
+          <i data-lucide="search" class="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+          <input id="searchInput" type="text" placeholder="Search address, city, county, creek, notes..." class="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-stone-300 focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600" />
+        </div>
+        <select id="driveFilter" class="px-3 py-2 text-sm rounded-lg border border-stone-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600">
+          <option value="60">Drive: ≤ 60 min (All)</option>
+          <option value="45">Drive: ≤ 45 min</option>
+          <option value="30">Drive: ≤ 30 min</option>
+        </select>
+        <select id="priceFilter" class="px-3 py-2 text-sm rounded-lg border border-stone-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600">
+          <option value="all">Price: Any</option>
+          <option value="300000">Price: ≤ $300k</option>
+          <option value="500000">Price: ≤ $500k</option>
+          <option value="750000">Price: ≤ $750k</option>
+        </select>
+        <select id="waterFilter" class="px-3 py-2 text-sm rounded-lg border border-stone-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600">
+          <option value="all">Water: All Types</option>
+          <option value="creek">Creek / Stream</option>
+          <option value="pond">Pond / Lake</option>
+          <option value="river">River</option>
+        </select>
+      </div>
+
+      <div class="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-stone-100">
+        <div class="flex flex-wrap items-center gap-4 text-sm">
+          <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+            <input id="electricOnly" type="checkbox" class="rounded border-stone-300 text-emerald-700 focus:ring-emerald-600" />
+            <span class="text-stone-700">Electric on-site</span>
+          </label>
+          <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+            <input id="barnOnly" type="checkbox" class="rounded border-stone-300 text-emerald-700 focus:ring-emerald-600" />
+            <span class="text-stone-700">Has barn / structure</span>
+          </label>
+          <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+            <input id="favoritesOnly" type="checkbox" class="rounded border-stone-300 text-amber-600 focus:ring-amber-500" />
+            <span class="text-stone-700">Favorites only</span>
+          </label>
+          <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+            <input id="showHidden" type="checkbox" class="rounded border-stone-300 text-stone-600 focus:ring-stone-500" />
+            <span class="text-stone-500">Show hidden (<span id="hiddenCount">0</span>)</span>
+          </label>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <select id="sortSelect" class="px-3 py-1.5 text-sm rounded-lg border border-stone-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-600">
+            <option value="drive_asc">Sort: Closest Drive</option>
+            <option value="price_asc">Sort: Price (Low → High)</option>
+            <option value="price_desc">Sort: Price (High → Low)</option>
+            <option value="acres_desc">Sort: Largest Acreage</option>
+            <option value="ppa_asc">Sort: Lowest $/Acre</option>
+          </select>
+          <div class="inline-flex rounded-lg border border-stone-300 overflow-hidden">
+            <button id="viewCardsBtn" type="button" class="px-2.5 py-1.5 text-xs font-medium bg-emerald-700 text-white cursor-pointer" title="Card view">
+              <i data-lucide="layout-grid" class="w-4 h-4"></i>
+            </button>
+            <button id="viewTableBtn" type="button" class="px-2.5 py-1.5 text-xs font-medium bg-white text-stone-600 hover:bg-stone-100 cursor-pointer" title="Table view">
+              <i data-lucide="table" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Results Container -->
+    <section id="resultsContainer"></section>
+  </main>
+
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-stone-200 space-y-4">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-bold text-stone-900">Connect Published Google Sheet CSV</h2>
+        <button id="closeSettingsBtn" type="button" class="text-stone-400 hover:text-stone-600 cursor-pointer">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <p class="text-sm text-stone-600 leading-relaxed">
+        In your <strong>Alabama Land Search Listings</strong> Google Sheet, go to
+        <strong>File → Share → Publish to web</strong>, choose the <strong>Listings</strong> tab and <strong>Comma-separated values (.csv)</strong>, and paste the link below.
+      </p>
+      <div>
+        <label for="csvUrlInput" class="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1.5">Google Sheet CSV URL</label>
+        <input id="csvUrlInput" type="url" placeholder="https://docs.google.com/spreadsheets/d/.../pub?output=csv" class="w-full px-3 py-2 text-sm rounded-lg border border-stone-300 focus:outline-none focus:ring-2 focus:ring-emerald-600" />
+      </div>
+      <div class="flex flex-wrap items-center justify-between gap-2 pt-2">
+        <button id="clearCsvBtn" type="button" class="px-3 py-2 text-xs font-medium text-stone-600 hover:text-stone-900 cursor-pointer">
+          Reset to Built-in Snapshot
+        </button>
+        <div class="flex items-center gap-2">
+          <button id="cancelSettingsBtn" type="button" class="px-4 py-2 text-sm font-medium text-stone-700 bg-stone-100 hover:bg-stone-200 rounded-lg cursor-pointer">
+            Cancel
+          </button>
+          <button id="saveCsvBtn" type="button" class="px-4 py-2 text-sm font-medium text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg cursor-pointer">
+            Save &amp; Sync
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Optional: Paste your published Google Sheet CSV URL here before uploading to GitHub Pages
+    // so every device loads live data automatically without needing to enter it in Settings.
+    const DEFAULT_SHEET_CSV_URL = "";
+
+    const FALLBACK_LISTINGS = [
+      {
+        id: "7489-alice-rd",
+        Address: "7489 Alice Rd, McCalla, AL 35111",
+        City: "McCalla",
+        County: "Jefferson",
+        Price: 265000,
+        Acres: 11,
+        WaterFeature: "Creek through middle",
+        ElectricOnSite: "Yes",
+        BarnOrStructure: "Yes - 3,000+ sq ft 4-stall barn",
+        DriveMinutes: 33,
+        DriveMiles: 24.8,
+        Status: "Active",
+        DateAdded: "2026-11-24",
+        ListingURL: "https://www.homes.com/property/7489-alice-rd-mccalla-al/j3vfbr2q7414l/",
+        MapsURL: "https://www.google.com/maps/dir/Birmingham,+AL+35244,+USA/7489+Alice+Rd,+McCalla,+AL+35111,+USA/data=!4m14!4m13!1m5!1m1!19sChIJ6Sz8kH8hiYgRnSOQLcrnRIs!2m2!1d-86.8119917!2d33.3639393!1m5!1m1!19sChIJCR3Kg2fEiIgRtpoNDE5o3zo!2m2!1d-87.110007!2d33.293133!3e0",
+        Notes: "Public water & electric on-site; MLS #21469123."
+      },
+      {
+        id: "5343-cr16",
+        Address: "5343 A County Road 16 (Spring Creek Estate), Montevallo, AL 35115",
+        City: "Montevallo",
+        County: "Shelby",
+        Price: 697000,
+        Acres: 28.28,
+        WaterFeature: "750+ ft Spring Creek + spring-fed pond",
+        ElectricOnSite: "Yes",
+        BarnOrStructure: "Yes - Barn w/ 2BD/1BA living quarters & stalls",
+        DriveMinutes: 28,
+        DriveMiles: 20.2,
+        Status: "Active",
+        DateAdded: "2026-11-24",
+        ListingURL: "https://nationalland.com/listing/spring-creek-estate",
+        MapsURL: "https://www.google.com/maps/dir/Birmingham,+AL+35244,+USA/5343+Co+Rd+16,+Montevallo,+AL+35115,+USA/data=!4m14!4m13!1m5!1m1!19sChIJ6Sz8kH8hiYgRnSOQLcrnRIs!2m2!1d-86.8119917!2d33.3639393!1m5!1m1!19sChIJdzTl9acuiYgRbg_xPqlnZ8I!2m2!1d-86.8116939!2d33.1299486!3e0",
+        Notes: "Fenced paddocks, tack room, water faucets; NLR #3260407."
+      },
+      {
+        id: "0-sterling-estates",
+        Address: "0 Sterling Estates Dr, Helena/Bessemer, AL 35022",
+        City: "Helena",
+        County: "Jefferson",
+        Price: 114400,
+        Acres: 12,
+        WaterFeature: "~400 ft shared pond access",
+        ElectricOnSite: "Yes (believed on-site)",
+        BarnOrStructure: "No",
+        DriveMinutes: 29,
+        DriveMiles: 15.5,
+        Status: "Active",
+        DateAdded: "2026-11-24",
+        ListingURL: "https://www.homes.com/property/0-sterling-estates-dr-helena-al-unit-28193107/sb67bmhf2dvfr/",
+        MapsURL: "https://www.google.com/maps/dir/Birmingham,+AL+35244,+USA/Sterling+Estates+Dr,+Helena,+AL+35022,+USA/data=!4m14!4m13!1m5!1m1!19sChIJ6Sz8kH8hiYgRnSOQLcrnRIs!2m2!1d-86.8119917!2d33.3639393!1m5!1m1!19sChIJ0UPzOv3YiIgRf0AvpgCoTSg!2m2!1d-86.9402655!2d33.2766994!3e0",
+        Notes: "Explicitly no HOA; A-1 zoning; power & water believed on-site; MLS #11955901."
+      },
+      {
+        id: "2639-cr52",
+        Address: "2639 County Road 52, Helena, AL 35080",
+        City: "Helena",
+        County: "Shelby",
+        Price: 141000,
+        Acres: 14,
+        WaterFeature: "~1,600 ft Cahaba River frontage",
+        ElectricOnSite: "Unknown",
+        BarnOrStructure: "No",
+        DriveMinutes: 23,
+        DriveMiles: 9.6,
+        Status: "Active",
+        DateAdded: "2026-11-24",
+        ListingURL: "https://www.zillow.com/homedetails/2639-County-Road-52-Helena-AL-35080/466410249_zpid/",
+        MapsURL: "https://www.google.com/maps/dir/Birmingham,+AL+35244,+USA/2639+Co+Rd+52,+Helena,+AL+35080,+USA/data=!4m14!4m13!1m5!1m1!19sChIJ6Sz8kH8hiYgRnSOQLcrnRIs!2m2!1d-86.8119917!2d33.3639393!1m5!1m1!19sIjESLwoUChIJfYSDPxUniYgRemNA8H_xYYUQzxQqFAoSCdc2T6Vy34iIEZaxPHjZhpmR!2m2!1d-86.879491399999992!2d33.2864084!3e0",
+        Notes: "Wooded tract with road to river; R-2 zoning; MLS #12053872."
+      },
+      {
+        id: "faith-school-rd",
+        Address: "59.61 Acres Faith School Rd, McCalla, AL 35111",
+        City: "McCalla",
+        County: "Jefferson",
+        Price: 88000,
+        Acres: 59.61,
+        WaterFeature: "Coleman Lakes waterfront/views",
+        ElectricOnSite: "Unknown",
+        BarnOrStructure: "No",
+        DriveMinutes: 30,
+        DriveMiles: 19.1,
+        Status: "Active",
+        DateAdded: "2026-11-24",
+        ListingURL: "https://www.realtor.com/realestateandhomes-detail/7764-Faith-School-Rd_Mc-Calla_AL_35111_M96777-12388",
+        MapsURL: "https://www.google.com/maps/dir/Birmingham,+AL+35244,+USA/7764+Faith+School+Rd,+McCalla,+AL+35111,+USA/data=!4m14!4m13!1m5!1m1!19sChIJ6Sz8kH8hiYgRnSOQLcrnRIs!2m2!1d-86.8119917!2d33.3639393!1m5!1m1!19sChIJ140FAxLbiIgRu2zIXbMhbjY!2m2!1d-87.032937199999992!2d33.285501!3e0",
+        Notes: "Conservation easement (recreation only, no residential construction); MLS #1802569."
+      },
+      {
+        id: "0007-cr195",
+        Address: "0007 County Road 195 (Clanton Recreation Tract), Clanton, AL 35046",
+        City: "Clanton",
+        County: "Chilton",
+        Price: 649000,
+        Acres: 157.06,
+        WaterFeature: "2,500+ ft year-round creek + ~1-acre pond",
+        ElectricOnSite: "Available",
+        BarnOrStructure: "No",
+        DriveMinutes: 39,
+        DriveMiles: 34.7,
+        Status: "Active",
+        DateAdded: "2026-11-24",
+        ListingURL: "https://nationalland.com/listing/clanton-recreation-tract-1",
+        MapsURL: "https://www.google.com/maps/dir/Birmingham,+AL+35244,+USA/Co+Rd+195,+Clanton,+AL+35046,+USA/data=!4m14!4m13!1m5!1m1!19sChIJ6Sz8kH8hiYgRnSOQLcrnRIs!2m2!1d-86.8119917!2d33.3639393!1m5!1m1!19sIi4qLAoUChIJS4sVtLbLjogRjO-494WmgzISFAoSCe2XtpQMtI6IESi6HI9GVhmg!2m2!1d-86.6251252!2d32.9712661!3e0",
+        Notes: "Power & water available; road system & food plots; MLS #12005185."
+      },
+      {
+        id: "1345-cr133",
+        Address: "1345 County Road 133, Jemison, AL 35085",
+        City: "Jemison",
+        County: "Chilton",
+        Price: 1400000,
+        Acres: 85,
+        WaterFeature: "4-acre stocked pond",
+        ElectricOnSite: "Yes",
+        BarnOrStructure: "Yes - 4,000 sq ft home + garage apt",
+        DriveMinutes: 41,
+        DriveMiles: 29.6,
+        Status: "Active",
+        DateAdded: "2026-11-24",
+        ListingURL: "https://www.land.com/property/1345-county-road-133-jemison-alabama-35085/29300429/",
+        MapsURL: "https://www.google.com/maps/dir/Birmingham,+AL+35244,+USA/1345+Co+Rd+133,+Jemison,+AL+35085,+USA/data=!4m14!4m13!1m5!1m1!19sChIJ6Sz8kH8hiYgRnSOQLcrnRIs!2m2!1d-86.8119917!2d33.3639393!1m5!1m1!19sChIJh4zongzTjogRp2SXcadnVTY!2m2!1d-86.8004796!2d32.9989162!3e0",
+        Notes: "Horse-ready acreage; MLS #21468628."
+      },
+      {
+        id: "1875-spring-creek",
+        Address: "18.75 Acre Spring Creek Farm, Vincent, AL 35178",
+        City: "Vincent",
+        County: "Shelby",
+        Price: 241875,
+        Acres: 18.75,
+        WaterFeature: "900+ ft Spring Creek frontage",
+        ElectricOnSite: "Available",
+        BarnOrStructure: "No",
+        DriveMinutes: 44,
+        DriveMiles: 34.2,
+        Status: "Active",
+        DateAdded: "2026-11-24",
+        ListingURL: "https://nationalland.com/listing/1875-acre-spring-creek-farm",
+        MapsURL: "https://www.google.com/maps/dir/Birmingham,+AL+35244,+USA/Vincent,+AL+35178,+USA/data=!4m14!4m13!1m5!1m1!19sChIJ6Sz8kH8hiYgRnSOQLcrnRIs!2m2!1d-86.8119917!2d33.3639393!1m5!1m1!19sChIJoez3pbVniYgR0BOn4-KgTHU!2m2!1d-86.398479299999991!2d33.408693299999996!3e0",
+        Notes: "Pasture & mature timber; power & water at Hwy 231; NLR #3318247."
+      },
+      {
+        id: "466-mcclain",
+        Address: "466 McClain Rd, Bessemer, AL 35023",
+        City: "Bessemer",
+        County: "Jefferson",
+        Price: 198000,
+        Acres: 38,
+        WaterFeature: "2,000+ ft creek frontage",
+        ElectricOnSite: "Unknown",
+        BarnOrStructure: "No",
+        DriveMinutes: 46,
+        DriveMiles: 30.9,
+        Status: "Active",
+        DateAdded: "2026-11-24",
+        ListingURL: "https://www.realtor.com/realestateandhomes-detail/466-McClain-Rd_Bessemer_AL_35023_M99082-20000",
+        MapsURL: "https://www.google.com/maps/dir/Birmingham,+AL+35244,+USA/466+McClain+Rd,+Bessemer,+AL+35023,+USA/data=!4m14!4m13!1m5!1m1!19sChIJ6Sz8kH8hiYgRnSOQLcrnRIs!2m2!1d-86.8119917!2d33.3639393!1m5!1m1!19sChIJySSIklXviIgRiW1682IMrco!2m2!1d-87.0634352!2d33.4973084!3e0",
+        Notes: "Mature hardwoods; hunting/recreational; MLS #11635528."
+      },
+      {
+        id: "0-hidden-creek",
+        Address: "0 Hidden Creek Ln #1, Montevallo, AL 35115",
+        City: "Montevallo",
+        County: "Shelby",
+        Price: 650000,
+        Acres: 51,
+        WaterFeature: "Creek on property",
+        ElectricOnSite: "Yes",
+        BarnOrStructure: "No",
+        DriveMinutes: 48,
+        DriveMiles: 18.1,
+        Status: "Active",
+        DateAdded: "2026-11-24",
+        ListingURL: "https://www.zillow.com/homedetails/0-Hidden-Creek-Ln-1-Montevallo-AL-35115/461447862_zpid/",
+        MapsURL: "https://www.google.com/maps/dir/Birmingham,+AL+35244,+USA/Hidden+Creek+Ln,+Alabama+35115,+USA/data=!4m14!4m13!1m5!1m1!19sChIJ6Sz8kH8hiYgRnSOQLcrnRIs!2m2!1d-86.8119917!2d33.3639393!1m5!1m1!19sChIJfReUt5MuiYgRtY6UZTw2UgY!2m2!1d-86.7945582!2d33.1459002!3e0",
+        Notes: "Unrestricted; electric on-site; MLS #21448436."
+      },
+      {
+        id: "0-dorough-rd",
+        Address: "0 Dorough Rd #1 & 2, Columbiana, AL 35051",
+        City: "Columbiana",
+        County: "Shelby",
+        Price: 850000,
+        Acres: 143,
+        WaterFeature: "North Fork Yellow Creek",
+        ElectricOnSite: "Unknown",
+        BarnOrStructure: "No",
+        DriveMinutes: 48,
+        DriveMiles: 24.4,
+        Status: "Active",
+        DateAdded: "2026-11-24",
+        ListingURL: "https://www.zillow.com/homedetails/0-Dorough-Rd-1-2-Columbiana-AL-35051/446736656_zpid/",
+        MapsURL: "https://www.google.com/maps/dir/Birmingham,+AL+35244,+USA/Dorough+Rd,+Alabama+35051,+USA/data=!4m14!4m13!1m5!1m1!19sChIJ6Sz8kH8hiYgRnSOQLcrnRIs!2m2!1d-86.8119917!2d33.3639393!1m5!1m1!19sChIJswLnvlc_iYgRkciR_2Kerk4!2m2!1d-86.5799112!2d33.3108739!3e0",
+        Notes: "Two tracts (63 & 82 ac) sold together; MLS #21408067."
+      },
+      {
+        id: "1950-cr49",
+        Address: "1950 County Road 49 #2, Wilsonville, AL 35186",
+        City: "Wilsonville",
+        County: "Shelby",
+        Price: 725000,
+        Acres: 60,
+        WaterFeature: "Pond",
+        ElectricOnSite: "Unknown",
+        BarnOrStructure: "No",
+        DriveMinutes: 51,
+        DriveMiles: 27.5,
+        Status: "Active",
+        DateAdded: "2026-11-24",
+        ListingURL: "https://www.zillow.com/homedetails/1950-County-Road-49-2-Wilsonville-AL-35186/464722251_zpid/",
+        MapsURL: "https://www.google.com/maps/dir/Birmingham,+AL+35244,+USA/1950+Co+Rd+49,+Columbiana,+AL+35051,+USA/data=!4m14!4m13!1m5!1m1!19sChIJ6Sz8kH8hiYgRnSOQLcrnRIs!2m2!1d-86.8119917!2d33.3639393!1m5!1m1!19sChIJEUGMFI9HiYgRA_Rjh9bULus!2m2!1d-86.573889999999992!2d33.243925!3e0",
+        Notes: "Rural acreage with pond; MLS #21462749."
+      },
+      {
+        id: "1780-river-bend",
+        Address: "22.5 Acres / 1780 River Bend Cir, Hayden, AL 35079",
+        City: "Hayden",
+        County: "Blount",
+        Price: 339000,
+        Acres: 23,
+        WaterFeature: "Riverfront",
+        ElectricOnSite: "Yes",
+        BarnOrStructure: "No",
+        DriveMinutes: 55,
+        DriveMiles: 50.8,
+        Status: "Active",
+        DateAdded: "2026-11-24",
+        ListingURL: "https://www.zillow.com/homedetails/22-5-Acres-River-Bend-Cir-Hayden-AL-35079/465320862_zpid/",
+        MapsURL: "https://www.google.com/maps/dir/Birmingham,+AL+35244,+USA/1780+River+Bend+Cir,+Hayden,+AL+35079,+USA/data=!4m14!4m13!1m5!1m1!19sChIJ6Sz8kH8hiYgRnSOQLcrnRIs!2m2!1d-86.8119917!2d33.3639393!1m5!1m1!19sIjESLwoUChIJ3yM-LaK8iYgRKOTc24_8cxIQ9A0qFAoSCevwmvahvImIEbMQ6gFCzQRu!2m2!1d-86.653680799999989!2d33.950637799999996!3e0",
+        Notes: "Electric on property; public water; MLS #21465092 / #21929292."
+      }
+    ];
+
+    const STORAGE_KEY_CSV = "al_land_csv_url_v1";
+    const STORAGE_KEY_FAVS = "al_land_favs_v1";
+    const STORAGE_KEY_HIDDEN = "al_land_hidden_v1";
+
+    const state = {
+      listings: [...FALLBACK_LISTINGS],
+      viewMode: "cards",
+      csvUrl: DEFAULT_SHEET_CSV_URL,
+      favorites: new Set(),
+      hidden: new Set()
+    };
+
+    function loadPrefs() {
+      try {
+        const savedUrl = localStorage.getItem(STORAGE_KEY_CSV);
+        if (savedUrl) state.csvUrl = savedUrl;
+        const savedFavs = JSON.parse(localStorage.getItem(STORAGE_KEY_FAVS) || "[]");
+        if (Array.isArray(savedFavs)) state.favorites = new Set(savedFavs);
+        const savedHidden = JSON.parse(localStorage.getItem(STORAGE_KEY_HIDDEN) || "[]");
+        if (Array.isArray(savedHidden)) state.hidden = new Set(savedHidden);
+      } catch (e) {
+        // Fallback silently if storage is unavailable
+      }
+    }
+
+    function savePrefs() {
+      try {
+        localStorage.setItem(STORAGE_KEY_FAVS, JSON.stringify([...state.favorites]));
+        localStorage.setItem(STORAGE_KEY_HIDDEN, JSON.stringify([...state.hidden]));
+      } catch (e) {
+        // Ignore storage errors
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function formatCurrency(num) {
+      if (!Number.isFinite(num) || num <= 0) return "—";
+      return "$" + Math.round(num).toLocaleString("en-US");
+    }
+
+    function parseCsv(text) {
+      const rows = [];
+      let row = [];
+      let field = "";
+      let inQuotes = false;
+      for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        const next = text[i + 1];
+        if (inQuotes) {
+          if (c === '"' && next === '"') {
+            field += '"';
+            i++;
+          } else if (c === '"') {
+            inQuotes = false;
+          } else {
+            field += c;
+          }
+        } else {
+          if (c === '"') {
+            inQuotes = true;
+          } else if (c === ",") {
+            row.push(field.trim());
+            field = "";
+          } else if (c === "\n" || c === "\r") {
+            if (c === "\r" && next === "\n") i++;
+            row.push(field.trim());
+            if (row.some((cell) => cell !== "")) rows.push(row);
+            row = [];
+            field = "";
+          } else {
+            field += c;
+          }
+        }
+      }
+      if (field.length > 0 || row.length > 0) {
+        row.push(field.trim());
+        if (row.some((cell) => cell !== "")) rows.push(row);
+      }
+      if (rows.length < 2) return [];
+      const headers = rows[0].map((h) => h.replace(/\s+/g, ""));
+      return rows.slice(1).map((cols, idx) => {
+        const obj = {};
+        headers.forEach((h, i) => {
+          obj[h] = cols[i] ?? "";
+        });
+        const price = Number(String(obj.Price || "").replace(/[^0-9.]/g, "")) || 0;
+        const acres = Number(String(obj.Acres || "").replace(/[^0-9.]/g, "")) || 0;
+        const driveMin = Number(String(obj.DriveMinutes || "").replace(/[^0-9.]/g, "")) || 999;
+        const driveMi = Number(String(obj.DriveMiles || "").replace(/[^0-9.]/g, "")) || 0;
+        return {
+          id: (obj.Address || "row-" + idx).toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 40),
+          Address: obj.Address || "Unnamed Property",
+          City: obj.City || "",
+          County: obj.County || "",
+          Price: price,
+          Acres: acres,
+          WaterFeature: obj.WaterFeature || "Water on-site",
+          ElectricOnSite: obj.ElectricOnSite || "Unknown",
+          BarnOrStructure: obj.BarnOrStructure || "No",
+          DriveMinutes: driveMin,
+          DriveMiles: driveMi,
+          Status: obj.Status || "Active",
+          DateAdded: obj.DateAdded || "",
+          ListingURL: obj.ListingURL || "",
+          MapsURL: obj.MapsURL || "",
+          Notes: obj.Notes || ""
+        };
+      });
+    }
+
+    function showBanner(message, type) {
+      const banner = document.getElementById("statusBanner");
+      banner.className = "rounded-xl border px-4 py-3 text-sm flex items-center justify-between gap-3 ";
+      if (type === "error") {
+        banner.className += "bg-rose-50 border-rose-200 text-rose-800";
+      } else if (type === "success") {
+        banner.className += "bg-emerald-50 border-emerald-200 text-emerald-800";
+      } else {
+        banner.className += "bg-amber-50 border-amber-200 text-amber-800";
+      }
+      banner.innerHTML = `<span>${escapeHtml(message)}</span><button type="button" id="dismissBannerBtn" class="text-xs font-semibold underline cursor-pointer">Dismiss</button>`;
+      banner.classList.remove("hidden");
+      document.getElementById("dismissBannerBtn").addEventListener("click", () => {
+        banner.classList.add("hidden");
+      });
+    }
+
+    async function syncFromSheet() {
+      const badge = document.getElementById("dataSourceBadge");
+      if (!state.csvUrl) {
+        state.listings = [...FALLBACK_LISTINGS];
+        badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-amber-400"></span> Built-in Snapshot (Nov 24, 2026)';
+        render();
+        return;
+      }
+      try {
+        const res = await fetch(state.csvUrl, { cache: "no-store" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const csvText = await res.text();
+        const parsed = parseCsv(csvText);
+        if (parsed.length === 0) throw new Error("No rows found in CSV");
+        state.listings = parsed;
+        const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400"></span> Live Sheet Synced (${escapeHtml(now)})`;
+        render();
+      } catch (err) {
+        state.listings = [...FALLBACK_LISTINGS];
+        badge.innerHTML = '<span class="w-2 h-2 rounded-full bg-rose-400"></span> Sync Failed — Using Snapshot';
+        showBanner("Could not fetch the Google Sheet CSV (" + err.message + "). Showing built-in snapshot instead.", "error");
+        render();
+      }
+    }
+
+    function getFilteredListings() {
+      const query = document.getElementById("searchInput").value.trim().toLowerCase();
+      const maxDrive = Number(document.getElementById("driveFilter").value);
+      const priceCap = document.getElementById("priceFilter").value;
+      const waterType = document.getElementById("waterFilter").value;
+      const electricOnly = document.getElementById("electricOnly").checked;
+      const barnOnly = document.getElementById("barnOnly").checked;
+      const favoritesOnly = document.getElementById("favoritesOnly").checked;
+      const showHidden = document.getElementById("showHidden").checked;
+      const sortBy = document.getElementById("sortSelect").value;
+
+      const filtered = state.listings.filter((item) => {
+        if (!showHidden && state.hidden.has(item.id)) return false;
+        if (favoritesOnly && !state.favorites.has(item.id)) return false;
+        if (item.DriveMinutes > maxDrive) return false;
+        if (priceCap !== "all" && item.Price > Number(priceCap)) return false;
+        if (waterType !== "all") {
+          const wf = item.WaterFeature.toLowerCase();
+          if (waterType === "creek" && !wf.includes("creek") && !wf.includes("stream")) return false;
+          if (waterType === "pond" && !wf.includes("pond") && !wf.includes("lake")) return false;
+          if (waterType === "river" && !wf.includes("river")) return false;
+        }
+        if (electricOnly && !item.ElectricOnSite.toLowerCase().startsWith("yes")) return false;
+        if (barnOnly && !item.BarnOrStructure.toLowerCase().startsWith("yes")) return false;
+        if (query) {
+          const hay = [item.Address, item.City, item.County, item.WaterFeature, item.BarnOrStructure, item.Notes].join(" ").toLowerCase();
+          if (!hay.includes(query)) return false;
+        }
+        return true;
+      });
+
+      filtered.sort((a, b) => {
+        if (sortBy === "drive_asc") return a.DriveMinutes - b.DriveMinutes;
+        if (sortBy === "price_asc") return a.Price - b.Price;
+        if (sortBy === "price_desc") return b.Price - a.Price;
+        if (sortBy === "acres_desc") return b.Acres - a.Acres;
+        if (sortBy === "ppa_asc") {
+          const ppaA = a.Acres > 0 ? a.Price / a.Acres : Infinity;
+          const ppaB = b.Acres > 0 ? b.Price / b.Acres : Infinity;
+          return ppaA - ppaB;
+        }
+        return 0;
+      });
+
+      return filtered;
+    }
+
+    function renderKpis(list) {
+      document.getElementById("kpiCount").textContent = String(list.length);
+      document.getElementById("hiddenCount").textContent = String(state.hidden.size);
+      if (list.length === 0) {
+        document.getElementById("kpiAvgPerAcre").textContent = "—";
+        document.getElementById("kpiClosest").textContent = "—";
+        document.getElementById("kpiElectric").textContent = "0";
+        return;
+      }
+      const validPpa = list.filter((x) => x.Acres > 0 && x.Price > 0).map((x) => x.Price / x.Acres);
+      const avgPpa = validPpa.length ? validPpa.reduce((s, v) => s + v, 0) / validPpa.length : 0;
+      const minDrive = Math.min(...list.map((x) => x.DriveMinutes));
+      const electricCount = list.filter((x) => x.ElectricOnSite.toLowerCase().startsWith("yes")).length;
+
+      document.getElementById("kpiAvgPerAcre").textContent = formatCurrency(avgPpa);
+      document.getElementById("kpiClosest").textContent = Number.isFinite(minDrive) && minDrive < 999 ? `${minDrive} min` : "—";
+      document.getElementById("kpiElectric").textContent = String(electricCount);
+    }
+
+    function render() {
+      const list = getFilteredListings();
+      renderKpis(list);
+      const container = document.getElementById("resultsContainer");
+
+      if (list.length === 0) {
+        container.innerHTML = `
+          <div class="bg-white rounded-xl border border-stone-200 p-10 text-center">
+            <p class="text-stone-700 font-medium">No properties match your current filters.</p>
+            <p class="text-stone-500 text-sm mt-1">Try widening the drive time, price cap, or toggling off "Electric on-site" / "Has barn".</p>
+          </div>
+        `;
+        return;
+      }
+
+      if (state.viewMode === "cards") {
+        container.innerHTML = `<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">${list.map(renderCard).join("")}</div>`;
+      } else {
+        container.innerHTML = renderTable(list);
+      }
+      if (window.lucide) window.lucide.createIcons();
+    }
+
+    function renderCard(item) {
+      const ppa = item.Acres > 0 ? formatCurrency(item.Price / item.Acres) + "/ac" : "—";
+      const isFav = state.favorites.has(item.id);
+      const isHidden = state.hidden.has(item.id);
+      const hasElectric = item.ElectricOnSite.toLowerCase().startsWith("yes");
+      const hasBarn = item.BarnOrStructure.toLowerCase().startsWith("yes");
+
+      return `
+        <article class="bg-white rounded-xl border ${isFav ? "border-amber-400 ring-1 ring-amber-300" : "border-stone-200"} p-5 shadow-sm flex flex-col justify-between gap-4 ${isHidden ? "opacity-60" : ""}">
+          <div class="space-y-3">
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">${escapeHtml(item.DriveMinutes)} min (${escapeHtml(item.DriveMiles)} mi)</span>
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-stone-100 text-stone-700 ml-1">${escapeHtml(item.County)} Co.</span>
+              </div>
+              <div class="flex items-center gap-1">
+                <button type="button" data-action="fav" data-id="${escapeHtml(item.id)}" class="p-1.5 rounded-lg hover:bg-stone-100 cursor-pointer ${isFav ? "text-amber-500" : "text-stone-400"}" title="Toggle Favorite">
+                  <i data-lucide="star" class="w-4 h-4 ${isFav ? "fill-amber-400" : ""}"></i>
+                </button>
+                <button type="button" data-action="hide" data-id="${escapeHtml(item.id)}" class="p-1.5 rounded-lg hover:bg-stone-100 cursor-pointer ${isHidden ? "text-rose-600" : "text-stone-400"}" title="${isHidden ? "Unhide" : "Hide"}">
+                  <i data-lucide="${isHidden ? "eye" : "eye-off"}" class="w-4 h-4"></i>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <h3 class="font-semibold text-stone-900 leading-snug">${escapeHtml(item.Address)}</h3>
+              <div class="flex items-baseline gap-2 mt-1.5">
+                <span class="text-xl font-bold text-emerald-900">${formatCurrency(item.Price)}</span>
+                <span class="text-sm font-medium text-stone-600">• ${escapeHtml(item.Acres)} acres</span>
+                <span class="text-xs text-stone-400">(${ppa})</span>
+              </div>
+            </div>
+
+            <div class="space-y-1.5 text-sm text-stone-700 pt-2 border-t border-stone-100">
+              <div class="flex items-start gap-2">
+                <i data-lucide="waves" class="w-4 h-4 text-sky-600 shrink-0 mt-0.5"></i>
+                <span>${escapeHtml(item.WaterFeature)}</span>
+              </div>
+              <div class="flex items-start gap-2">
+                <i data-lucide="zap" class="w-4 h-4 ${hasElectric ? "text-amber-500" : "text-stone-400"} shrink-0 mt-0.5"></i>
+                <span>Electric: <strong>${escapeHtml(item.ElectricOnSite)}</strong></span>
+              </div>
+              <div class="flex items-start gap-2">
+                <i data-lucide="warehouse" class="w-4 h-4 ${hasBarn ? "text-emerald-600" : "text-stone-400"} shrink-0 mt-0.5"></i>
+                <span>Structure: <strong>${escapeHtml(item.BarnOrStructure)}</strong></span>
+              </div>
+            </div>
+
+            ${item.Notes ? `<p class="text-xs text-stone-500 bg-stone-50 rounded-lg p-2.5 border border-stone-100">${escapeHtml(item.Notes)}</p>` : ""}
+          </div>
+
+          <div class="flex items-center gap-2 pt-2 border-t border-stone-100">
+            ${item.ListingURL ? `<a href="${escapeHtml(item.ListingURL)}" target="_blank" rel="noopener noreferrer" class="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-emerald-700 hover:bg-emerald-800 text-white transition">View Listing <i data-lucide="external-link" class="w-3.5 h-3.5"></i></a>` : ""}
+            ${item.MapsURL ? `<a href="${escapeHtml(item.MapsURL)}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-xs font-medium bg-stone-100 hover:bg-stone-200 text-stone-700 transition">Route <i data-lucide="map-pin" class="w-3.5 h-3.5"></i></a>` : ""}
+          </div>
+        </article>
+      `;
+    }
+
+    function renderTable(list) {
+      return `
+        <div class="bg-white rounded-xl border border-stone-200 shadow-sm overflow-x-auto">
+          <table class="w-full text-left border-collapse text-sm">
+            <thead>
+              <tr class="bg-stone-100 text-stone-600 text-xs uppercase tracking-wider border-b border-stone-200">
+                <th class="py-3 px-4">Property</th>
+                <th class="py-3 px-4">Price</th>
+                <th class="py-3 px-4">Acres</th>
+                <th class="py-3 px-4">Water</th>
+                <th class="py-3 px-4">Electric / Barn</th>
+                <th class="py-3 px-4">Drive</th>
+                <th class="py-3 px-4 text-right">Links</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-stone-100">
+              ${list.map((item) => `
+                <tr class="hover:bg-stone-50">
+                  <td class="py-3 px-4 font-medium text-stone-900">
+                    <div>${escapeHtml(item.Address)}</div>
+                    <div class="text-xs text-stone-500">${escapeHtml(item.County)} County</div>
+                  </td>
+                  <td class="py-3 px-4 font-semibold text-emerald-900 whitespace-nowrap">${formatCurrency(item.Price)}</td>
+                  <td class="py-3 px-4 whitespace-nowrap">${escapeHtml(item.Acres)} ac</td>
+                  <td class="py-3 px-4 text-stone-700">${escapeHtml(item.WaterFeature)}</td>
+                  <td class="py-3 px-4 text-xs text-stone-600">
+                    <div>Elec: <strong>${escapeHtml(item.ElectricOnSite)}</strong></div>
+                    <div>Struct: <strong>${escapeHtml(item.BarnOrStructure)}</strong></div>
+                  </td>
+                  <td class="py-3 px-4 whitespace-nowrap">${escapeHtml(item.DriveMinutes)} min</td>
+                  <td class="py-3 px-4 text-right whitespace-nowrap space-x-2">
+                    ${item.ListingURL ? `<a href="${escapeHtml(item.ListingURL)}" target="_blank" rel="noopener noreferrer" class="text-emerald-700 hover:underline font-medium">Listing</a>` : ""}
+                    ${item.MapsURL ? `<a href="${escapeHtml(item.MapsURL)}" target="_blank" rel="noopener noreferrer" class="text-stone-600 hover:underline">Map</a>` : ""}
+                  </td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    // Event Listeners
+    document.getElementById("resultsContainer").addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-action]");
+      if (!btn) return;
+      const action = btn.dataset.action;
+      const id = btn.dataset.id;
+      if (action === "fav") {
+        if (state.favorites.has(id)) state.favorites.delete(id);
+        else state.favorites.add(id);
+        savePrefs();
+        render();
+      } else if (action === "hide") {
+        if (state.hidden.has(id)) state.hidden.delete(id);
+        else state.hidden.add(id);
+        savePrefs();
+        render();
+      }
+    });
+
+    ["searchInput", "driveFilter", "priceFilter", "waterFilter", "electricOnly", "barnOnly", "favoritesOnly", "showHidden", "sortSelect"].forEach((id) => {
+      document.getElementById(id).addEventListener("input", render);
+      document.getElementById(id).addEventListener("change", render);
+    });
+
+    document.getElementById("viewCardsBtn").addEventListener("click", () => {
+      state.viewMode = "cards";
+      document.getElementById("viewCardsBtn").className = "px-2.5 py-1.5 text-xs font-medium bg-emerald-700 text-white cursor-pointer";
+      document.getElementById("viewTableBtn").className = "px-2.5 py-1.5 text-xs font-medium bg-white text-stone-600 hover:bg-stone-100 cursor-pointer";
+      render();
+    });
+
+    document.getElementById("viewTableBtn").addEventListener("click", () => {
+      state.viewMode = "table";
+      document.getElementById("viewTableBtn").className = "px-2.5 py-1.5 text-xs font-medium bg-emerald-700 text-white cursor-pointer";
+      document.getElementById("viewCardsBtn").className = "px-2.5 py-1.5 text-xs font-medium bg-white text-stone-600 hover:bg-stone-100 cursor-pointer";
+      render();
+    });
+
+    document.getElementById("refreshBtn").addEventListener("click", syncFromSheet);
+
+    // Settings Modal
+    const modal = document.getElementById("settingsModal");
+    document.getElementById("openSettingsBtn").addEventListener("click", () => {
+      document.getElementById("csvUrlInput").value = state.csvUrl || "";
+      modal.classList.remove("hidden");
+    });
+    const closeModal = () => modal.classList.add("hidden");
+    document.getElementById("closeSettingsBtn").addEventListener("click", closeModal);
+    document.getElementById("cancelSettingsBtn").addEventListener("click", closeModal);
+    document.getElementById("saveCsvBtn").addEventListener("click", () => {
+      const val = document.getElementById("csvUrlInput").value.trim();
+      state.csvUrl = val;
+      try {
+        if (val) localStorage.setItem(STORAGE_KEY_CSV, val);
+        else localStorage.removeItem(STORAGE_KEY_CSV);
+      } catch (e) {}
+      closeModal();
+      syncFromSheet();
+    });
+    document.getElementById("clearCsvBtn").addEventListener("click", () => {
+      document.getElementById("csvUrlInput").value = "";
+      state.csvUrl = "";
+      try { localStorage.removeItem(STORAGE_KEY_CSV); } catch (e) {}
+      closeModal();
+      syncFromSheet();
+    });
+
+    // Init
+    loadPrefs();
+    syncFromSheet();
+  </script>
+</body>
+</html>
